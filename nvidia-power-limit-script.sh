@@ -1,54 +1,54 @@
 #!/bin/bash
 
-# Функция для проверки запуска с правами sudo
+# Function to check if script is run with sudo privileges
 check_sudo() {
     if [ "$EUID" -ne 0 ]; then
-        echo "Пожалуйста, запустите скрипт с sudo."
+        echo "Please run this script with sudo."
         exit 1
     fi
 }
 
-# Функция для установки ограничения мощности NVIDIA
+# Function to set NVIDIA power limits
 set_power_limit() {
     local power_limit=250
 
-    # Включаем режим персистентности
+    # Enable persistence mode
     nvidia-smi -pm ENABLED
-    echo "Режим персистентности включен."
+    echo "Persistence mode enabled."
 
-    # Используем более надежный способ подсчета GPU
+    # Use a more reliable method to count GPUs
     local gpu_count=$(nvidia-smi --list-gpus | wc -l)
     
-    # Проверяем наличие двух GPU
+    # Check for two GPUs
     if [ "$gpu_count" -ne 2 ]; then
-        echo "Внимание: обнаружено $gpu_count GPU, вместо ожидаемых 2."
+        echo "Warning: detected $gpu_count GPU(s), instead of expected 2."
     fi
 
-    # Устанавливаем ограничение мощности для каждой GPU отдельно
+    # Set power limit for each GPU separately
     nvidia-smi -i 0 -pl $power_limit
-    echo "Ограничение мощности установлено на $power_limit Вт для GPU 0."
+    echo "Power limit set to $power_limit W for GPU 0."
     
-    # Устанавливаем лимит для второй видеокарты, если она есть
+    # Set power limit for the second GPU if it exists
     if [ "$gpu_count" -ge 2 ]; then
         nvidia-smi -i 1 -pl $power_limit
-        echo "Ограничение мощности установлено на $power_limit Вт для GPU 1."
+        echo "Power limit set to $power_limit W for GPU 1."
     fi
 }
 
-# Функция для проверки текущих настроек мощности
+# Function to check current power settings
 check_power_settings() {
-    echo "Текущие настройки мощности:"
+    echo "Current power settings:"
     nvidia-smi -q -d POWER
 }
 
-# Функция для создания systemd сервиса
+# Function to create systemd service
 create_systemd_service() {
     local script_path=$(realpath $0)
     local service_file="/etc/systemd/system/nvidia-power-limit.service"
     
-    echo "Создание systemd-сервиса..."
+    echo "Creating systemd service..."
     
-    # Создаем файл сервиса
+    # Create service file
     cat > "$service_file" << EOF
 [Unit]
 Description=Set NVIDIA GPU power limits
@@ -64,25 +64,25 @@ RemainAfterExit=true
 WantedBy=multi-user.target
 EOF
 
-    # Перезагружаем конфигурацию systemd
+    # Reload systemd configuration
     systemctl daemon-reload
     
-    # Включаем и запускаем сервис
+    # Enable and start the service
     systemctl enable nvidia-power-limit.service
     systemctl start nvidia-power-limit.service
     
-    echo "Systemd-сервис успешно создан и запущен."
+    echo "Systemd service successfully created and started."
 }
 
-# Основное выполнение
+# Main execution
 if [ "$1" = "--apply" ]; then
-    # Эта часть выполняется при запуске сервиса
+    # This part runs when the service is started
     set_power_limit
 else
-    # Эта часть выполняется при настройке
+    # This part runs during setup
     check_sudo
     set_power_limit
     create_systemd_service
     check_power_settings
-    echo "Настройка завершена. Ограничение мощности будет применяться при каждой загрузке системы."
+    echo "Setup complete. Power limit will be applied at every system boot."
 fi 
