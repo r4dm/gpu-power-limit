@@ -28,9 +28,9 @@ We offer two methods: a manual setup process and an automatic script-based appro
    sudo nvidia-smi -pm ENABLED
    ```
 
-4. Set desired power limit (e.g., 240W):
+4. Set desired power limit (e.g., 250W):
    ```
-   sudo nvidia-smi -pl 240
+   sudo nvidia-smi -pl 250
    ```
 
 5. Create a script:
@@ -40,13 +40,15 @@ We offer two methods: a manual setup process and an automatic script-based appro
    Script content:
    ```bash
    #!/bin/bash
-   sudo nvidia-smi -pm ENABLED
-   sudo nvidia-smi -pl 240
+   nvidia-smi -pm ENABLED
+   nvidia-smi -pl 250
    ```
    Note: For multiple GPUs, you can add additional lines with different power limits if needed:
    ```bash
-   sudo nvidia-smi -i 0 -pl 240  # Set power limit for GPU 0
-   sudo nvidia-smi -i 1 -pl 200  # Set power limit for GPU 1
+   #!/bin/bash
+   nvidia-smi -pm ENABLED
+   nvidia-smi -i 0 -pl 250  # Set power limit for GPU 0
+   nvidia-smi -i 1 -pl 250  # Set power limit for GPU 1
    # Add more lines for additional GPUs
    ```
 
@@ -55,16 +57,35 @@ We offer two methods: a manual setup process and an automatic script-based appro
    chmod +x ~/nvidia-pl.sh
    ```
 
-7. Add a crontab task:
+7. Create a systemd service:
    ```
-   crontab -e
+   sudo nano /etc/systemd/system/nvidia-power-limit.service
    ```
-   Add the line:
+   Add the following content:
    ```
-   @reboot sh /home/(username)/nvidia-pl.sh
+   [Unit]
+   Description=Set NVIDIA GPU power limits
+   After=multi-user.target
+   After=nvidia-persistenced.service
+
+   [Service]
+   Type=oneshot
+   ExecStart=/home/(username)/nvidia-pl.sh
+   RemainAfterExit=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   Replace `(username)` with your actual username.
+
+8. Enable and start the service:
+   ```
+   sudo systemctl daemon-reload
+   sudo systemctl enable nvidia-power-limit.service
+   sudo systemctl start nvidia-power-limit.service
    ```
 
-8. Verify settings after reboot:
+9. Verify settings:
    ```
    sudo nvidia-smi -q -d POWER
    ```
