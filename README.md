@@ -202,7 +202,7 @@ fi
 The script will automatically set up everything needed and add itself to crontab for execution at system boot.
 
 ### Note
-For both methods, make sure to replace `(your_username)` and `(username)` with your actual username. Also, adjust the power limit (240W in these examples) to suit your specific GPU model and requirements. You can find the acceptable range for your GPU in the output of the `nvidia-smi -q -d POWER` command.
+For both methods, make sure to replace `(your_username)` and `(username)` with your actual username. Also, adjust the power limit (250W in these examples) to suit your specific GPU model and requirements. You can find the acceptable range for your GPU in the output of the `nvidia-smi -q -d POWER` command.
 
 For systems with multiple GPUs, you can customize the script to set different power limits for each GPU. Use the `-i` flag followed by the GPU index to specify individual GPUs.
 
