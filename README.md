@@ -80,7 +80,7 @@ This method simplifies the setup process by using a single script that performs 
 ```bash
 #!/bin/bash
 
-# Function to check if the script is run with sudo
+# Function to check if script is run with sudo privileges
 check_sudo() {
     if [ "$EUID" -ne 0 ]; then
         echo "Please run this script with sudo."
@@ -88,75 +88,83 @@ check_sudo() {
     fi
 }
 
-# Function to add lines to sudoers file
-add_to_sudoers() {
-    local user=$(whoami)
-    local sudoers_file="/etc/sudoers"
-    local temp_file="/tmp/sudoers.tmp"
-
-    # Check if lines already exist in sudoers
-    if ! grep -q "$user.*nvidia-persistenced" "$sudoers_file" || ! grep -q "$user.*nvidia-smi" "$sudoers_file"; then
-        # Create a temporary copy of the sudoers file
-        cp "$sudoers_file" "$temp_file"
-
-        # Add the lines to the temporary file
-        echo "$user ALL=(ALL) NOPASSWD: /usr/bin/nvidia-persistenced" >> "$temp_file"
-        echo "$user ALL=(ALL) NOPASSWD: /usr/bin/nvidia-smi" >> "$temp_file"
-
-        # Check if the temporary file is valid
-        visudo -c -f "$temp_file"
-        if [ $? -eq 0 ]; then
-            # If valid, replace the sudoers file
-            mv "$temp_file" "$sudoers_file"
-            echo "Sudoers file updated successfully."
-        else
-            echo "Failed to update sudoers file. Please check and update manually."
-            rm "$temp_file"
-            exit 1
-        fi
-    else
-        echo "Sudoers entries already exist."
-    fi
-}
-
-# Function to set NVIDIA power limit
+# Function to set NVIDIA power limits
 set_power_limit() {
-    local power_limit=$1
+    local power_limit=250
 
     # Enable persistence mode
     nvidia-smi -pm ENABLED
+    echo "Persistence mode enabled."
 
-    # Set power limit for all GPUs
-    nvidia-smi -pl $power_limit
+    # Use a more reliable method to count GPUs
+    local gpu_count=$(nvidia-smi --list-gpus | wc -l)
+    
+    # Check for two GPUs
+    if [ "$gpu_count" -ne 2 ]; then
+        echo "Warning: detected $gpu_count GPU(s), instead of expected 2."
+    fi
 
-    echo "Power limit set to $power_limit watts for all GPUs."
+    # Set power limit for each GPU separately
+    nvidia-smi -i 0 -pl $power_limit
+    echo "Power limit set to $power_limit W for GPU 0."
+    
+    # Set power limit for the second GPU if it exists
+    if [ "$gpu_count" -ge 2 ]; then
+        nvidia-smi -i 1 -pl $power_limit
+        echo "Power limit set to $power_limit W for GPU 1."
+    fi
 }
 
-# Function to create and setup cron job
-setup_cron_job() {
-    local script_path=$(realpath $0)
-    local cron_cmd="@reboot $script_path --apply"
+# Function to check current power settings
+check_power_settings() {
+    echo "Current power settings:"
+    nvidia-smi -q -d POWER
+}
 
-    # Check if cron job already exists
-    if ! crontab -l | grep -q "$cron_cmd"; then
-        (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
-        echo "Cron job added successfully."
-    else
-        echo "Cron job already exists."
-    fi
+# Function to create systemd service
+create_systemd_service() {
+    local script_path=$(realpath $0)
+    local service_file="/etc/systemd/system/nvidia-power-limit.service"
+    
+    echo "Creating systemd service..."
+    
+    # Create service file
+    cat > "$service_file" << EOF
+[Unit]
+Description=Set NVIDIA GPU power limits
+After=multi-user.target
+After=nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+ExecStart=$script_path --apply
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Reload systemd configuration
+    systemctl daemon-reload
+    
+    # Enable and start the service
+    systemctl enable nvidia-power-limit.service
+    systemctl start nvidia-power-limit.service
+    
+    echo "Systemd service successfully created and started."
 }
 
 # Main execution
 if [ "$1" = "--apply" ]; then
-    # This part runs at boot time
-    set_power_limit 240  # Change this value to your desired power limit
+    # This part runs when the service is started
+    set_power_limit
 else
-    # This part runs when setting up
+    # This part runs during setup
     check_sudo
-    add_to_sudoers
-    set_power_limit 240  # Change this value to your desired power limit
-    setup_cron_job
-    echo "Setup completed. Power limit will be applied on next boot."
+    set_power_limit
+    create_systemd_service
+    check_power_settings
+    echo "Setup complete. Power limit will be applied at every system boot."
 fi
 ```
 
